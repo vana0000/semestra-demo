@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/containerMonthView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/two_tone_dark">
+
+    <TextView
+        android:id="@+id/textHomeTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="14dp"
+        android:text="@string/nav_home"
+        android:textColor="@color/two_tone_on_dark"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonPrevMonth"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:text="@string/month_prev"
+            android:textAllCaps="false"
+            android:textColor="@color/two_tone_on_dark_secondary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/textCurrentMonth"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textColor="@color/two_tone_on_dark"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonNextMonth"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:text="@string/month_next"
+            android:textAllCaps="false"
+            android:textColor="@color/two_tone_on_dark_secondary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <com.kizitonwose.calendar.view.CalendarView
+        android:id="@+id/monthCalendarView"
+        android:layout_width="match_parent"
+        android:layout_height="280dp"
+        android:paddingHorizontal="8dp"
+        android:paddingBottom="8dp"
+        app:cv_dayViewResource="@layout/item_calendar_day" />
+</LinearLayout>

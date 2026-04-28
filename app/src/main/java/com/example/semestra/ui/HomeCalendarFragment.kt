@@ -2,13 +2,11 @@ package com.example.semestra.ui
 
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
@@ -33,7 +31,6 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.WeekFields
 import java.util.Locale
 
 class HomeCalendarFragment : Fragment() {
@@ -44,11 +41,9 @@ class HomeCalendarFragment : Fragment() {
     private lateinit var monthTitle: TextView
     private lateinit var prevMonthButton: MaterialButton
     private lateinit var nextMonthButton: MaterialButton
-    private lateinit var upcomingRecycler: RecyclerView
-    private lateinit var eventsRecycler: RecyclerView
+    private lateinit var timelineRecycler: RecyclerView
     private lateinit var emptyView: TextView
-    private lateinit var adapter: ScheduleEventAdapter
-    private lateinit var upcomingAdapter: ScheduleEventAdapter
+    private lateinit var timelineAdapter: TimelineAdapter
 
     private var selectedDate: LocalDate = LocalDate.now()
     private var classFilter: String? = null
@@ -66,57 +61,46 @@ class HomeCalendarFragment : Fragment() {
         monthTitle = view.findViewById(R.id.textCurrentMonth)
         prevMonthButton = view.findViewById(R.id.buttonPrevMonth)
         nextMonthButton = view.findViewById(R.id.buttonNextMonth)
-        upcomingRecycler = view.findViewById(R.id.recyclerUpcomingEvents)
-        shellViewModel = ViewModelProvider(requireActivity())[MainShellViewModel::class.java]
-        eventsRecycler = view.findViewById(R.id.recyclerHomeEvents)
+        timelineRecycler = view.findViewById(R.id.recyclerTimeline)
         emptyView = view.findViewById(R.id.textHomeEmpty)
-        adapter = ScheduleEventAdapter { event ->
-            EventDetailsBottomSheet.newInstance(event.eventId)
-                .show(parentFragmentManager, "event_details")
-        }
-        upcomingAdapter = ScheduleEventAdapter { event ->
-            EventDetailsBottomSheet.newInstance(event.eventId)
-                .show(parentFragmentManager, "event_details")
-        }
-        upcomingRecycler.layoutManager = LinearLayoutManager(requireContext())
-        upcomingRecycler.adapter = upcomingAdapter
-        eventsRecycler.layoutManager = LinearLayoutManager(requireContext())
-        eventsRecycler.adapter = adapter
-        val sheet = view.findViewById<View>(R.id.layoutHomeBody)
-        val dragHandle = view.findViewById<View>(R.id.viewHomeDragHandle)
-        val behavior = BottomSheetBehavior.from(sheet).apply {
-            isHideable = false
-            isFitToContents = false
-            skipCollapsed = false
-            isDraggable = false
-            expandedOffset = resources.displayMetrics.heightPixels / 2
-            state = BottomSheetBehavior.STATE_COLLAPSED
-        }
-        dragHandle.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    behavior.isDraggable = true
-                    false
+        
+        shellViewModel = ViewModelProvider(requireActivity())[MainShellViewModel::class.java]
+        
+        timelineAdapter = TimelineAdapter(
+            onClick = { event ->
+                EventDetailsBottomSheet.newInstance(event.eventId)
+                    .show(parentFragmentManager, "event_details")
+            },
+            onHeaderClick = { date ->
+                if (date != null) {
+                    selectedDate = date
+                    calendarView.notifyCalendarChanged()
+                    syncCalendarToDate(date)
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    behavior.isDraggable = false
-                    false
-                }
-                else -> false
             }
-        }
+        )
+        
+        timelineRecycler.layoutManager = LinearLayoutManager(requireContext())
+        timelineRecycler.adapter = timelineAdapter
 
         setupCalendar()
         observeFilter()
         observeEvents()
     }
 
+    private fun syncCalendarToDate(date: LocalDate) {
+        val month = YearMonth.of(date.year, date.month)
+        if (calendarView.findFirstVisibleMonth()?.yearMonth != month) {
+            calendarView.scrollToMonth(month)
+        }
+    }
+
     private fun setupCalendar() {
         currentMonth = YearMonth.now()
         val startMonth = currentMonth.minusMonths(6)
         val endMonth = currentMonth.plusMonths(8)
-        val firstDayOfWeek = daysOfWeek(firstDayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek)
-        calendarView.setup(startMonth, endMonth, firstDayOfWeek.first())
+        val firstDayOfWeek = daysOfWeek().first()
+        calendarView.setup(startMonth, endMonth, firstDayOfWeek)
         calendarView.scrollToMonth(currentMonth)
         monthTitle.text = currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
         calendarView.monthScrollListener = { month ->
@@ -136,7 +120,7 @@ class HomeCalendarFragment : Fragment() {
                     if (day.position == DayPosition.MonthDate) {
                         selectedDate = day.date
                         calendarView.notifyCalendarChanged()
-                        renderSelectedDay()
+                        scrollToDateInTimeline(selectedDate)
                     }
                 }
             }
@@ -210,25 +194,45 @@ class HomeCalendarFragment : Fragment() {
     private fun mapAndRender() {
         val filtered = allEvents.filter { classFilter.isNullOrBlank() || it.className == classFilter }
         eventsByDate = filtered.groupBy { millisToDate(it.eventDate) }
-        if (filtered.isNotEmpty() && eventsByDate[selectedDate].isNullOrEmpty()) {
-            selectedDate = millisToDate(filtered.minOf { it.eventDate })
-            val selectedMonth = YearMonth.of(selectedDate.year, selectedDate.month)
-            calendarView.scrollToMonth(selectedMonth)
-        }
         calendarView.notifyCalendarChanged()
-        renderSelectedDay()
+        
+        val timelineItems = mutableListOf<TimelineAdapter.TimelineItem>()
+        val today = LocalDate.now()
+        
+        // Today's events
+        val todayEvents = eventsByDate[today].orEmpty().sortedBy { it.eventDate }
+        if (todayEvents.isNotEmpty()) {
+            timelineItems.add(TimelineAdapter.TimelineItem.Header("Today", today))
+            timelineItems.addAll(todayEvents.map { TimelineAdapter.TimelineItem.Event(it) })
+        }
+        
+        // Upcoming events
+        val upcomingEvents = filtered
+            .filter { millisToDate(it.eventDate) > today }
+            .sortedBy { it.eventDate }
+            
+        if (upcomingEvents.isNotEmpty()) {
+            timelineItems.add(TimelineAdapter.TimelineItem.Header("Upcoming"))
+            var lastDate: LocalDate? = null
+            upcomingEvents.forEach { event ->
+                val date = millisToDate(event.eventDate)
+                if (date != lastDate) {
+                    timelineItems.add(TimelineAdapter.TimelineItem.Header(date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), date))
+                    lastDate = date
+                }
+                timelineItems.add(TimelineAdapter.TimelineItem.Event(event))
+            }
+        }
+        
+        timelineAdapter.submitList(timelineItems)
+        emptyView.visibility = if (timelineItems.isEmpty()) View.VISIBLE else View.GONE
     }
 
-    private fun renderSelectedDay() {
-        val dayEvents = eventsByDate[selectedDate].orEmpty().sortedBy { it.eventDate }
-        val upcoming = allEvents
-            .filter { millisToDate(it.eventDate) >= LocalDate.now() }
-            .sortedBy { it.eventDate }
-            .take(5)
-        adapter.submitList(dayEvents)
-        upcomingAdapter.submitList(upcoming)
-        emptyView.visibility = if (dayEvents.isEmpty()) View.VISIBLE else View.GONE
-        eventsRecycler.visibility = if (dayEvents.isEmpty()) View.GONE else View.VISIBLE
+    private fun scrollToDateInTimeline(date: LocalDate) {
+        val position = timelineAdapter.getPositionForDate(date)
+        if (position != -1) {
+            (timelineRecycler.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position, 0)
+        }
     }
 
     private fun dotColorFor(event: ExamEvent): Int? {
